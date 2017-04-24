@@ -31,4 +31,5 @@ multiprocessing module or via MPI.
            print(result)
 
     Then start script with
+
         $ mpiexec -np <num> python script.py
