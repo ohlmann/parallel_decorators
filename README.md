@@ -1,5 +1,5 @@
 # Parallel decorators
-This module contains decorators for parallel vectorization of functions
+This module contains decorators for parallel vectorization of functions.
 
 
 The decorators vectorize the function over the first argument and return a
