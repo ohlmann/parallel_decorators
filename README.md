@@ -15,7 +15,7 @@ multiprocessing module or via MPI.
         def power(x, y):
             return x**y
         result = power(range(5), 3)
-        [0, 1, 8, 27, 64]
+        # result is now: [0, 1, 8, 27, 64]
 
  * Example for MPI:
 
@@ -25,10 +25,10 @@ multiprocessing module or via MPI.
             return x**y
         # computation in parallel here
         result = power(range(5), 3)
-        [0, 1, 8, 27, 64]
+        # result is now: [0, 1, 8, 27, 64]
         if is_master();
            # use results on master core
            print(result)
 
     Then start script with
-    $ mpiexec -np <num> python script.py
+        $ mpiexec -np <num> python script.py
