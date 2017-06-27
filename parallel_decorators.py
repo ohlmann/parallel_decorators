@@ -87,7 +87,8 @@ def vectorize_queue(num_procs=2, use_progressbar=False):
     """
     if use_progressbar:
         try:
-            from progressbar import Bar, AdaptiveETA, Percentage, ProgressBar
+            from progressbar import Bar, AdaptiveETA, Percentage, ProgressBar,\
+                    FormatLabel
         except ModuleNotFoundError:
             print("Progressbar requested, but module progressbar not found."
                   " Disabling progressbar.")
@@ -105,9 +106,8 @@ def vectorize_queue(num_procs=2, use_progressbar=False):
             from multiprocessing import Process, Queue
 
             if use_progressbar:
-                widgets = [Percentage(),
-                           ' ', Bar(),
-                           ' ', AdaptiveETA()]
+                widgets = [FormatLabel(f.__name__), Percentage(),
+                           Bar(), AdaptiveETA()]
                 pbar = ProgressBar(widgets=widgets, maxval=len(xs))
                 pbar.start()
 
