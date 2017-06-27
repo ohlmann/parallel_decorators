@@ -70,7 +70,7 @@ def vectorize(f):
     return newfun
 
 
-def vectorize_queue(num_procs=2):
+def vectorize_queue(num_procs=2, use_progressbar=False):
     """function wrapper that vectorizes f over the first argument
     if the first argument is an iterable.
     This function wrapper uses the multiprocessing module to implement
@@ -85,6 +85,14 @@ def vectorize_queue(num_procs=2):
     >>> power(range(5), 3)
     [0, 1, 8, 27, 64]
     """
+    if use_progressbar:
+        try:
+            from progressbar import Bar, AdaptiveETA, Percentage, ProgressBar
+        except ModuleNotFoundError:
+            print("Progressbar requested, but module progressbar not found."
+                  " Disabling progressbar.")
+            use_progressbar = False
+
     def decorator(f):
         """the decorator function we return"""
         @wraps(f)
@@ -95,6 +103,13 @@ def vectorize_queue(num_procs=2):
                 return f(xs, *args, **kwargs)
 
             from multiprocessing import Process, Queue
+
+            if use_progressbar:
+                widgets = [Percentage(),
+                           ' ', Bar(),
+                           ' ', AdaptiveETA()]
+                pbar = ProgressBar(widgets=widgets, maxval=len(xs))
+                pbar.start()
 
             task_queue = Queue()
             done_queue = Queue()
@@ -120,10 +135,16 @@ def vectorize_queue(num_procs=2):
             for i in range(len(xs)):
                 j, res = done_queue.get()
                 result[j] = res
+                if use_progressbar:
+                    pbar.update(i)
 
             # stop workers
             for i in range(num_procs):
                 task_queue.put('STOP')
+
+            if use_progressbar:
+                pbar.finish()
+
             return result
         return newfun
     return decorator
@@ -207,12 +228,14 @@ def vectorize_mpi(f):
     return newfun
 
 
-def vectorize_parallel(method='processes', num_procs=2):
+def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False):
     """decorator for parallel vectorization of functions.
 
     -- method: can be 'processes' for shared-memory parallelization or 'MPI'
        for distributed memory parallelization.
     -- num_procs: number of processors for method == 'processes'
+    -- use_progressbar: for method == 'processes', this indicates if a
+       progress bar should be printed; requires progressbar module
 
     Example for multiprocessing:
 
@@ -241,7 +264,7 @@ def vectorize_parallel(method='processes', num_procs=2):
     $ mpiexec -np <num> python script.py
     """
     if method == 'processes':
-        return vectorize_queue(num_procs)
+        return vectorize_queue(num_procs, use_progressbar)
     elif method == 'MPI':
         return vectorize_mpi
     else:
