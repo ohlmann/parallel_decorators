@@ -106,7 +106,7 @@ def vectorize_queue(num_procs=2, use_progressbar=False):
             from multiprocessing import Process, Queue
 
             if use_progressbar:
-                widgets = [FormatLabel(f.__name__), Percentage(),
+                widgets = [FormatLabel(f.__name__), ' ', Percentage(),
                            Bar(), AdaptiveETA()]
                 pbar = ProgressBar(widgets=widgets, maxval=len(xs))
                 pbar.start()
