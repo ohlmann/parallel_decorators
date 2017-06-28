@@ -34,6 +34,7 @@ Then start script with
 $ mpiexec -np <num> python script.py
 """
 from functools import wraps
+import traceback
 
 
 def is_master():
@@ -123,8 +124,16 @@ def vectorize_queue(num_procs=2, use_progressbar=False):
             # -> important that f, args and kwargs are known by childs
             def worker(in_queue, out_queue):
                 for i, x in iter(in_queue.get, 'STOP'):
-                    res = f(x, *args, **kwargs)
-                    out_queue.put((i, res))
+                    try:
+                        res = f(x, *args, **kwargs)
+                        out_queue.put((i, res, None))
+                    except Exception as e:
+                        print("Caught exception in parallel vectorized "
+                              "function:")
+                        # print out traceback
+                        traceback.print_exc()
+                        print()
+                        out_queue.put((i, None, e))
 
             # start workers
             for i in range(num_procs):
@@ -132,9 +141,13 @@ def vectorize_queue(num_procs=2, use_progressbar=False):
 
             # get results, ordering done by first argument
             result = [None] * len(xs)
+            errors = []
             for i in range(len(xs)):
-                j, res = done_queue.get()
+                j, res, e = done_queue.get()
                 result[j] = res
+                # caught exception?
+                if e is not None:
+                    errors.append(e)
                 if use_progressbar:
                     pbar.update(i)
 
@@ -144,6 +157,11 @@ def vectorize_queue(num_procs=2, use_progressbar=False):
 
             if use_progressbar:
                 pbar.finish()
+
+            # error ocurred?
+            if len(errors) > 0:
+                print("Caught at least one error during execution:")
+                raise errors[0]
 
             return result
         return newfun
