@@ -56,8 +56,11 @@ def is_iterable(xs):
 
 
 def vectorize(f):
-    """function wrapper that vectorizes f over the first argument
-    if the first argument is an iterable"""
+    """decorator for vectorization of functions
+
+    Function wrapper that vectorizes f over the first argument
+    if the first argument is an iterable.
+    """
     @wraps(f)
     def newfun(xs, *args, **kwargs):
         if not is_iterable(xs):
@@ -72,7 +75,9 @@ def vectorize(f):
 
 
 def vectorize_queue(num_procs=2, use_progressbar=False):
-    """function wrapper that vectorizes f over the first argument
+    """decorator for parallel vectorization of functions using processes
+
+    Function wrapper that vectorizes f over the first argument
     if the first argument is an iterable.
     This function wrapper uses the multiprocessing module to implement
     parallelism for the vectorization.
@@ -169,7 +174,9 @@ def vectorize_queue(num_procs=2, use_progressbar=False):
 
 
 def vectorize_mpi(f):
-    """function wrapper that vectorizes f over the first argument
+    """Decorator for parallel vectorization of functions using MPI
+
+    Function wrapper that vectorizes f over the first argument
     if the first argument is an iterable.
     This function wrapper uses the mpi4py module to implement
     parallelism for the vectorization.
@@ -247,10 +254,10 @@ def vectorize_mpi(f):
 
 
 def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False):
-    """decorator for parallel vectorization of functions.
+    """Decorator for parallel vectorization of functions
 
     -- method: can be 'processes' for shared-memory parallelization or 'MPI'
-       for distributed memory parallelization.
+       for distributed memory parallelization
     -- num_procs: number of processors for method == 'processes'
     -- use_progressbar: for method == 'processes', this indicates if a
        progress bar should be printed; requires progressbar module
