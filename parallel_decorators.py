@@ -74,7 +74,7 @@ def vectorize(f):
     return newfun
 
 
-def vectorize_queue(num_procs=2, use_progressbar=False):
+def vectorize_queue(num_procs=2, use_progressbar=False, label=None):
     """decorator for parallel vectorization of functions using processes
 
     Function wrapper that vectorizes f over the first argument
@@ -111,8 +111,13 @@ def vectorize_queue(num_procs=2, use_progressbar=False):
 
             from multiprocessing import Process, Queue
 
+            if label is None:
+                bar_label = f.__name__
+            else:
+                bar_label = label
+
             if use_progressbar:
-                widgets = [FormatLabel(f.__name__), ' ', Percentage(),
+                widgets = [FormatLabel(bar_label), ' ', Percentage(),
                            Bar(), AdaptiveETA()]
                 pbar = ProgressBar(widgets=widgets, maxval=len(xs))
                 pbar.start()
@@ -253,7 +258,8 @@ def vectorize_mpi(f):
     return newfun
 
 
-def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False):
+def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False,
+                       label=None):
     """Decorator for parallel vectorization of functions
 
     -- method: can be 'processes' for shared-memory parallelization or 'MPI'
@@ -289,7 +295,7 @@ def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False):
     $ mpiexec -np <num> python script.py
     """
     if method == 'processes':
-        return vectorize_queue(num_procs, use_progressbar)
+        return vectorize_queue(num_procs, use_progressbar, label)
     elif method == 'MPI':
         return vectorize_mpi
     else:
