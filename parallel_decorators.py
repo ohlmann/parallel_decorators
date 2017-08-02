@@ -217,31 +217,119 @@ def vectorize_mpi(f):
             return vectorize(f)(xs, *args, **kwargs)
 
         result = [None] * len(xs)
-
-        # compute results
-        # NICE TO HAVE: implement better load balancing; right now simplest
-        #   distribution of tasks to processes
-        for i, x in enumerate(xs):
-            if rank == i % size:
-                result[i] = f(x, *args, **kwargs)
+        error = None
 
         comm.Barrier()
 
-        # communicate results
+        # simple task distribution for less than 4 tasks,
+        # otherwise useslave-master model
+        if size < 4:
+            # compute results
+            for i, x in enumerate(xs):
+                if rank == i % size:
+                    result[i] = f(x, *args, **kwargs)
+            # communicate results
+            # for the easy load balancing
+            for i in range(len(xs)):
+                if i % size == 0:
+                    # already there
+                    continue
+                if rank == i % size:
+                    # process that sends
+                    comm.send(result[i], dest=0, tag=0)
+                elif rank == 0:
+                    # root receives
+                    result[i] = comm.recv(source=(i % size), tag=0)
+        else:
+            if rank == 0:
+                # master process -> handles distribution of tasks
+                all_sent = False
+                current = 0
+                ranks = [None] * len(xs)
+                reqs_sent = []
+                reqs_rcvd = []
+                completed_reqs = []
+                # send first batch of tasks
+                for i in range(1, size):
+                    ranks[current] = i
+                    reqs_sent.append(comm.isend((current, None),
+                                     dest=i, tag=0))
+                    reqs_rcvd.append(comm.irecv(source=i, tag=current))
+                    if current < len(xs):
+                        current += 1
+                    else:
+                        break
+                for r in reqs_sent:
+                    r.wait()
+                while True:
+                    new_reqs = []
+                    for i, r in enumerate(reqs_rcvd):
+                        # check for completed requests
+                        completed, data = r.test()
+                        if completed:
+                            if data is None:
+                                continue
+                            completed_reqs.append(i)
+                            if data[2] is not None:
+                                error = data[2]
+                            result[data[0]] = data[1]
+                            # check if all tasks have been distributed
+                            if current >= len(xs):
+                                all_sent = True
+                                continue
+                            ranks[current] = ranks[data[0]]
+                            # send new taks and get result (asynchronously)
+                            comm.send((current, None),
+                                      dest=ranks[data[0]], tag=0)
+                            new_reqs.append(comm.irecv(source=ranks[data[0]],
+                                                       tag=current))
+                            current += 1
+                    for r in new_reqs:
+                        reqs_rcvd.append(r)
+                    if all_sent and len(completed_reqs) == len(xs):
+                        # send None to all processes to exit loop
+                        req_finished = []
+                        for r in range(1, size):
+                            req_finished.append(comm.isend(
+                                (None, None), dest=r, tag=0))
+                        for req in req_finished:
+                            req.wait()
+                        break
+                    # check if error occurred and propagate to slaves
+                    if error is not None:
+                        for r in range(1, size):
+                            comm.send((None, error), dest=r, tag=0)
+                        break
+            else:
+                # slave processes -> do the computation
+                current, e = comm.recv(source=0, tag=0)
+                while True:
+                    # compute result for index current
+                    try:
+                        res = f(xs[current], *args, **kwargs)
+                        comm.send((current, res, None), dest=0, tag=current)
+                    except Exception as e:
+                        print("Caught exception in parallel vectorized "
+                              "function:")
+                        # print out traceback
+                        traceback.print_exc()
+                        print()
+                        comm.send((current, None, e), dest=0, tag=current)
+                    # receive next task
+                    current, e = comm.recv(source=0, tag=0)
+                    # exit loop if None is sent
+                    if current is None:
+                        if e is not None:
+                            error = e
+                        break
 
-        # for the easy load balancing
-        # communicate everything to root
-        for i in range(len(xs)):
-            if i % size == 0:
-                # already there
-                continue
-            if rank == i % size:
-                # process that sends
-                comm.send(result[i], dest=0, tag=0)
-            elif rank == 0:
-                # root receives
-                result[i] = comm.recv(source=(i % size), tag=0)
         comm.Barrier()
+
+        # check for error
+        if error is not None:
+            if rank == 0:
+                raise error
+            return
 
         # distribute data to all cores
         for i in range(len(xs)):
