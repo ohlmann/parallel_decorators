@@ -111,12 +111,11 @@ def vectorize_queue(num_procs=2, use_progressbar=False, label=None):
 
             from multiprocessing import Process, Queue
 
-            if label is None:
-                bar_label = f.__name__
-            else:
-                bar_label = label
-
             if use_progressbar:
+                if label is None:
+                    bar_label = f.__name__
+                else:
+                    bar_label = label
                 widgets = [FormatLabel(bar_label), ' ', Percentage(),
                            Bar(), AdaptiveETA()]
                 pbar = ProgressBar(widgets=widgets, maxval=len(xs))
@@ -267,6 +266,8 @@ def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False,
     -- num_procs: number of processors for method == 'processes'
     -- use_progressbar: for method == 'processes', this indicates if a
        progress bar should be printed; requires progressbar module
+    -- label: for use_progressbar==True, this sets the label of the
+       progress bar. Defaults to the name of the decorated function.
 
     Example for multiprocessing:
 
