@@ -95,10 +95,13 @@ def vectorize_queue(num_procs=2, use_progressbar=False, label=None):
         try:
             from progressbar import Bar, AdaptiveETA, Percentage, ProgressBar,\
                     FormatLabel
-        except ModuleNotFoundError:
+            show_progressbar = True
+        except ImportError:
             print("Progressbar requested, but module progressbar not found."
                   " Disabling progressbar.")
-            use_progressbar = False
+            show_progressbar = False
+    else:
+        show_progressbar = False
 
     def decorator(f):
         """the decorator function we return"""
@@ -111,7 +114,7 @@ def vectorize_queue(num_procs=2, use_progressbar=False, label=None):
 
             from multiprocessing import Process, Queue
 
-            if use_progressbar:
+            if show_progressbar:
                 if label is None:
                     bar_label = f.__name__
                 else:
@@ -157,14 +160,14 @@ def vectorize_queue(num_procs=2, use_progressbar=False, label=None):
                 # caught exception?
                 if e is not None:
                     errors.append(e)
-                if use_progressbar:
+                if show_progressbar:
                     pbar.update(i)
 
             # stop workers
             for i in range(num_procs):
                 task_queue.put('STOP')
 
-            if use_progressbar:
+            if show_progressbar:
                 pbar.finish()
 
             # error ocurred?
@@ -177,7 +180,7 @@ def vectorize_queue(num_procs=2, use_progressbar=False, label=None):
     return decorator
 
 
-def vectorize_mpi(f):
+def vectorize_mpi(use_progressbar=False, label=None):
     """Decorator for parallel vectorization of functions using MPI
 
     Function wrapper that vectorizes f over the first argument
@@ -187,7 +190,7 @@ def vectorize_mpi(f):
 
     Usage:
 
-    >>> @vectorize_mpi
+    >>> @vectorize_mpi()
     ... def power(x, y):
     ...    return x**y
     >>> # computation in parallel here
@@ -200,149 +203,184 @@ def vectorize_mpi(f):
     then start script with
     $ mpiexec -np <num> python script.py
     """
-    @wraps(f)
-    def newfun(xs, *args, **kwargs):
-        """the function that replaces the wrapped function"""
-        if not is_iterable(xs):
-            # no iteration, simply call function
-            return f(xs, *args, **kwargs)
+    show_progressbar = False
+    if use_progressbar:
+        try:
+            from progressbar import Bar, AdaptiveETA, Percentage, ProgressBar,\
+                    FormatLabel
+            show_progressbar = True
+        except ImportError:
+            print("Progressbar requested, but module progressbar not found."
+                  " Disabling progressbar.")
 
-        from mpi4py import MPI
-        comm = MPI.COMM_WORLD
-        size = comm.Get_size()
-        rank = comm.Get_rank()
+    def decorator(f):
+        nonlocal show_progressbar
 
-        # only one process
-        if size == 1:
-            return vectorize(f)(xs, *args, **kwargs)
+        @wraps(f)
+        def newfun(xs, *args, **kwargs):
+            """the function that replaces the wrapped function"""
+            if not is_iterable(xs):
+                # no iteration, simply call function
+                return f(xs, *args, **kwargs)
 
-        result = [None] * len(xs)
-        error = None
+            from mpi4py import MPI
+            comm = MPI.COMM_WORLD
+            size = comm.Get_size()
+            rank = comm.Get_rank()
 
-        comm.Barrier()
+            nonlocal show_progressbar
+            if rank != 0:
+                show_progressbar = False
 
-        # simple task distribution for less than 4 tasks,
-        # otherwise useslave-master model
-        if size < 4:
-            # compute results
-            for i, x in enumerate(xs):
-                if rank == i % size:
-                    result[i] = f(x, *args, **kwargs)
-            # communicate results
-            # for the easy load balancing
-            for i in range(len(xs)):
-                if i % size == 0:
-                    # already there
-                    continue
-                if rank == i % size:
-                    # process that sends
-                    comm.send(result[i], dest=0, tag=0)
-                elif rank == 0:
-                    # root receives
-                    result[i] = comm.recv(source=(i % size), tag=0)
-        else:
-            if rank == 0:
-                # master process -> handles distribution of tasks
-                all_sent = False
-                current = 0
-                ranks = [None] * len(xs)
-                reqs_sent = []
-                reqs_rcvd = []
-                completed_reqs = []
-                # send first batch of tasks
-                for i in range(1, size):
-                    ranks[current] = i
-                    reqs_sent.append(comm.isend((current, None),
-                                     dest=i, tag=0))
-                    reqs_rcvd.append(comm.irecv(source=i, tag=current))
-                    if current < len(xs):
-                        current += 1
-                    else:
-                        break
-                for r in reqs_sent:
-                    r.wait()
-                while True:
-                    new_reqs = []
-                    for i, r in enumerate(reqs_rcvd):
-                        # check for completed requests
-                        completed, data = r.test()
-                        if completed:
-                            if data is None:
-                                continue
-                            completed_reqs.append(i)
-                            if data[2] is not None:
-                                error = data[2]
-                            result[data[0]] = data[1]
-                            # check if all tasks have been distributed
-                            if current >= len(xs):
-                                all_sent = True
-                                continue
-                            ranks[current] = ranks[data[0]]
-                            # send new taks and get result (asynchronously)
-                            comm.send((current, None),
-                                      dest=ranks[data[0]], tag=0)
-                            new_reqs.append(comm.irecv(source=ranks[data[0]],
-                                                       tag=current))
+            # only one process
+            if size == 1:
+                return vectorize(f)(xs, *args, **kwargs)
+
+            result = [None] * len(xs)
+            error = None
+
+            comm.Barrier()
+
+            # simple task distribution for less than 4 tasks,
+            # otherwise useslave-master model
+            if size < 4:
+                # compute results
+                for i, x in enumerate(xs):
+                    if rank == i % size:
+                        result[i] = f(x, *args, **kwargs)
+                # communicate results
+                # for the easy load balancing
+                for i in range(len(xs)):
+                    if i % size == 0:
+                        # already there
+                        continue
+                    if rank == i % size:
+                        # process that sends
+                        comm.send(result[i], dest=0, tag=0)
+                    elif rank == 0:
+                        # root receives
+                        result[i] = comm.recv(source=(i % size), tag=0)
+            else:
+                if rank == 0:
+                    # create progressbar
+                    if show_progressbar:
+                        if label is None:
+                            bar_label = f.__name__
+                        else:
+                            bar_label = label
+                        widgets = [FormatLabel(bar_label), ' ', Percentage(),
+                                   Bar(), AdaptiveETA()]
+                        pbar = ProgressBar(widgets=widgets, maxval=len(xs))
+                        pbar.start()
+                    # master process -> handles distribution of tasks
+                    all_sent = False
+                    current = 0
+                    ranks = [None] * len(xs)
+                    reqs_sent = []
+                    reqs_rcvd = []
+                    completed_reqs = []
+                    # send first batch of tasks
+                    for i in range(1, size):
+                        ranks[current] = i
+                        reqs_sent.append(comm.isend((current, None),
+                                         dest=i, tag=0))
+                        reqs_rcvd.append(comm.irecv(source=i, tag=current))
+                        if current < len(xs):
                             current += 1
-                    for r in new_reqs:
-                        reqs_rcvd.append(r)
-                    if all_sent and len(completed_reqs) == len(xs):
-                        # send None to all processes to exit loop
-                        req_finished = []
-                        for r in range(1, size):
-                            req_finished.append(comm.isend(
-                                (None, None), dest=r, tag=0))
-                        for req in req_finished:
-                            req.wait()
-                        break
-                    # check if error occurred and propagate to slaves
-                    if error is not None:
-                        for r in range(1, size):
-                            comm.send((None, error), dest=r, tag=0)
-                        break
-            else:
-                # slave processes -> do the computation
-                current, e = comm.recv(source=0, tag=0)
-                while True:
-                    # compute result for index current
-                    try:
-                        res = f(xs[current], *args, **kwargs)
-                        comm.send((current, res, None), dest=0, tag=current)
-                    except Exception as e:
-                        print("Caught exception in parallel vectorized "
-                              "function:")
-                        # print out traceback
-                        traceback.print_exc()
-                        print()
-                        comm.send((current, None, e), dest=0, tag=current)
-                    # receive next task
+                        else:
+                            break
+                    for r in reqs_sent:
+                        r.wait()
+                    while True:
+                        new_reqs = []
+                        for i, r in enumerate(reqs_rcvd):
+                            # check for completed requests
+                            completed, data = r.test()
+                            if completed:
+                                if data is None:
+                                    continue
+                                completed_reqs.append(i)
+                                if data[2] is not None:
+                                    error = data[2]
+                                result[data[0]] = data[1]
+                                # check if all tasks have been distributed
+                                if current >= len(xs):
+                                    all_sent = True
+                                    continue
+                                ranks[current] = ranks[data[0]]
+                                # send new taks and get result (asynchronously)
+                                comm.send((current, None),
+                                          dest=ranks[data[0]], tag=0)
+                                new_reqs.append(comm.irecv(
+                                    source=ranks[data[0]], tag=current))
+                                current += 1
+                        for r in new_reqs:
+                            reqs_rcvd.append(r)
+                        if all_sent and len(completed_reqs) == len(xs):
+                            # send None to all processes to exit loop
+                            req_finished = []
+                            for r in range(1, size):
+                                req_finished.append(comm.isend(
+                                    (None, None), dest=r, tag=0))
+                            for req in req_finished:
+                                req.wait()
+                            break
+                        # check if error occurred and propagate to slaves
+                        if error is not None:
+                            for r in range(1, size):
+                                comm.send((None, error), dest=r, tag=0)
+                            break
+                        # update progressbar
+                        if show_progressbar:
+                            pbar.update(len(completed_reqs))
+                else:
+                    # slave processes -> do the computation
                     current, e = comm.recv(source=0, tag=0)
-                    # exit loop if None is sent
-                    if current is None:
-                        if e is not None:
-                            error = e
-                        break
+                    while True:
+                        # compute result for index current
+                        try:
+                            res = f(xs[current], *args, **kwargs)
+                            comm.send((current, res, None),
+                                      dest=0, tag=current)
+                        except Exception as e:
+                            print("Caught exception in parallel vectorized "
+                                  "function:")
+                            # print out traceback
+                            traceback.print_exc()
+                            print()
+                            comm.send((current, None, e), dest=0, tag=current)
+                        # receive next task
+                        current, e = comm.recv(source=0, tag=0)
+                        # exit loop if None is sent
+                        if current is None:
+                            if e is not None:
+                                error = e
+                            break
 
-        comm.Barrier()
+            comm.Barrier()
 
-        # check for error
-        if error is not None:
-            if rank == 0:
-                raise error
-            return
+            if show_progressbar:
+                pbar.finish()
 
-        # distribute data to all cores
-        for i in range(len(xs)):
-            if rank == 0:
-                # root sends to all processes
-                for j in range(size):
-                    comm.send(result[i], dest=j, tag=1)
-            else:
-                # each process receives from root
-                result[i] = comm.recv(source=0, tag=1)
-        comm.Barrier()
-        return result
-    return newfun
+            # check for error
+            if error is not None:
+                if rank == 0:
+                    raise error
+                return
+
+            # distribute data to all cores
+            for i in range(len(xs)):
+                if rank == 0:
+                    # root sends to all processes
+                    for j in range(size):
+                        comm.send(result[i], dest=j, tag=1)
+                else:
+                    # each process receives from root
+                    result[i] = comm.recv(source=0, tag=1)
+            comm.Barrier()
+            return result
+        return newfun
+    return decorator
 
 
 def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False,
@@ -386,6 +424,6 @@ def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False,
     if method == 'processes':
         return vectorize_queue(num_procs, use_progressbar, label)
     elif method == 'MPI':
-        return vectorize_mpi
+        return vectorize_mpi(use_progressbar, label)
     else:
         return vectorize
