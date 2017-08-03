@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="parallel_decorators",
-    version="0.1",
+    version="0.1.1",
     author="Sebastian Ohlmann",
     author_email="sebastian.ohlmann@gmail.com",
     description=("This module contains decorators for parallel vectorization"
