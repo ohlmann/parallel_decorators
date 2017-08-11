@@ -39,8 +39,11 @@ multiprocessing module or via MPI.
 ## Installation
 
 The module can be installed using `setup.py` by calling
+
     python setup.py install
+
 or if you do not have access to the system location of python
+
     python setup.py install --user
 
 Afterwards, the module can be imported and used.
