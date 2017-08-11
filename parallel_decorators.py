@@ -180,7 +180,7 @@ def vectorize_queue(num_procs=2, use_progressbar=False, label=None):
     return decorator
 
 
-def vectorize_mpi(use_progressbar=False, label=None):
+def vectorize_mpi(use_progressbar=False, label=None, scheduling='auto'):
     """Decorator for parallel vectorization of functions using MPI
 
     Function wrapper that vectorizes f over the first argument
@@ -242,9 +242,11 @@ def vectorize_mpi(use_progressbar=False, label=None):
 
             comm.Barrier()
 
-            # simple task distribution for less than 4 tasks,
-            # otherwise useslave-master model
-            if size < 4:
+            # simple task distribution for less than 4 tasks or if indicated by
+            # parameter scheduling
+            # otherwise use slave-master model
+            if (scheduling == 'static' or (scheduling == 'auto' and size < 4))\
+                    and not (scheduling == 'dynamic'):
                 # compute results
                 for i, x in enumerate(xs):
                     if rank == i % size:
@@ -385,16 +387,18 @@ def vectorize_mpi(use_progressbar=False, label=None):
 
 
 def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False,
-                       label=None):
+                       label=None, scheduling='auto'):
     """Decorator for parallel vectorization of functions
 
     -- method: can be 'processes' for shared-memory parallelization or 'MPI'
        for distributed memory parallelization
     -- num_procs: number of processors for method == 'processes'
-    -- use_progressbar: for method == 'processes', this indicates if a
-       progress bar should be printed; requires progressbar module
+    -- use_progressbar: this indicates if a progress bar should be printed;
+       requires progressbar module
     -- label: for use_progressbar==True, this sets the label of the
        progress bar. Defaults to the name of the decorated function.
+    -- scheduling: scheduling method to use for method == 'MPI'; can be
+       'auto', 'static', or 'dynamic'
 
     Example for multiprocessing:
 
@@ -425,6 +429,6 @@ def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False,
     if method == 'processes':
         return vectorize_queue(num_procs, use_progressbar, label)
     elif method == 'MPI':
-        return vectorize_mpi(use_progressbar, label)
+        return vectorize_mpi(use_progressbar, label, scheduling)
     else:
         return vectorize
