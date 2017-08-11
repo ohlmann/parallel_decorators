@@ -231,6 +231,7 @@ def vectorize_mpi(use_progressbar=False, label=None):
             nonlocal show_progressbar
             if rank != 0:
                 show_progressbar = False
+            pbar = None
 
             # only one process
             if size == 1:
@@ -359,7 +360,7 @@ def vectorize_mpi(use_progressbar=False, label=None):
 
             comm.Barrier()
 
-            if show_progressbar:
+            if show_progressbar and pbar is not None:
                 pbar.finish()
 
             # check for error
