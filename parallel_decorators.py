@@ -55,6 +55,14 @@ def is_iterable(xs):
     return True
 
 
+def staticvariables(**variables):
+    def decorate(function):
+        for variable in variables:
+            setattr(function, variable, variables[variable])
+        return function
+    return decorate
+
+
 def vectorize(f):
     """decorator for vectorization of functions
 
@@ -91,6 +99,7 @@ def vectorize_queue(num_procs=2, use_progressbar=False, label=None):
     >>> power(range(5), 3)
     [0, 1, 8, 27, 64]
     """
+    show_progressbar = False
     if use_progressbar:
         try:
             from progressbar import Bar, AdaptiveETA, Percentage, ProgressBar,\
@@ -99,18 +108,19 @@ def vectorize_queue(num_procs=2, use_progressbar=False, label=None):
         except ImportError:
             print("Progressbar requested, but module progressbar not found."
                   " Disabling progressbar.")
-            show_progressbar = False
-    else:
-        show_progressbar = False
 
+    @staticvariables(show_progressbar=show_progressbar)
     def decorator(f):
         """the decorator function we return"""
+        @staticvariables(show_progressbar=decorator.show_progressbar)
         @wraps(f)
         def newfun(xs, *args, **kwargs):
             """the function that replaces the wrapped function"""
             if not is_iterable(xs):
                 # no iteration, simply call function
                 return f(xs, *args, **kwargs)
+
+            show_progressbar = newfun.show_progressbar
 
             from multiprocessing import Process, Queue
 
@@ -213,22 +223,23 @@ def vectorize_mpi(use_progressbar=False, label=None, scheduling='auto'):
             print("Progressbar requested, but module progressbar not found."
                   " Disabling progressbar.")
 
+    @staticvariables(show_progressbar=show_progressbar)
     def decorator(f):
-        nonlocal show_progressbar
-
         @wraps(f)
+        @staticvariables(show_progressbar=decorator.show_progressbar)
         def newfun(xs, *args, **kwargs):
             """the function that replaces the wrapped function"""
             if not is_iterable(xs):
                 # no iteration, simply call function
                 return f(xs, *args, **kwargs)
 
+            show_progressbar = newfun.show_progressbar
+
             from mpi4py import MPI
             comm = MPI.COMM_WORLD
             size = comm.Get_size()
             rank = comm.Get_rank()
 
-            nonlocal show_progressbar
             if rank != 0:
                 show_progressbar = False
             pbar = None
