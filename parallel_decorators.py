@@ -77,6 +77,15 @@ def mpi_rank():
         return 0
 
 
+def mpi_barrier():
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        comm.Barrier()
+    except ImportError:
+        pass
+
+
 # more helper functions
 def is_iterable(xs):
     """returns True if xs is an iterable"""
