@@ -39,10 +39,26 @@ import traceback
 
 def is_master():
     """return True if current rank is master"""
-    from mpi4py import MPI
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    return rank == 0
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        return rank == 0
+    except ImportError:
+        return True
+
+
+def is_mpi():
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        size = comm.Get_size()
+        if size > 1:
+            return True
+        else:
+            return False
+    except ImportError:
+        return False
 
 
 def is_iterable(xs):
@@ -402,7 +418,8 @@ def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False,
     """Decorator for parallel vectorization of functions
 
     -- method: can be 'processes' for shared-memory parallelization or 'MPI'
-       for distributed memory parallelization
+       for distributed memory parallelization or 'adaptive' to use MPI if it is
+       active (caution: mpi4py must be installed for using mpi!)
     -- num_procs: number of processors for method == 'processes'
     -- use_progressbar: this indicates if a progress bar should be printed;
        requires progressbar module
@@ -437,6 +454,11 @@ def vectorize_parallel(method='processes', num_procs=2, use_progressbar=False,
     Then start script with
     $ mpiexec -np <num> python script.py
     """
+    if method == 'adaptive':
+        if is_mpi():
+            method = 'MPI'
+        else:
+            method = 'processes'
     if method == 'processes':
         return vectorize_queue(num_procs, use_progressbar, label)
     elif method == 'MPI':
