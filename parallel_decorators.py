@@ -272,10 +272,6 @@ def vectorize_mpi(use_progressbar=False, label=None, scheduling='auto'):
         @staticvariables(show_progressbar=decorator.show_progressbar)
         def newfun(xs, *args, **kwargs):
             """the function that replaces the wrapped function"""
-            if not is_iterable(xs):
-                # no iteration, simply call function
-                return f(xs, *args, **kwargs)
-
             show_progressbar = newfun.show_progressbar
 
             from mpi4py import MPI
@@ -286,6 +282,13 @@ def vectorize_mpi(use_progressbar=False, label=None, scheduling='auto'):
             if rank != 0:
                 show_progressbar = False
             pbar = None
+
+            # first broadcast array from root
+            xs = comm.bcast(xs, root=0)
+
+            if not is_iterable(xs):
+                # no iteration, simply call function
+                return f(xs, *args, **kwargs)
 
             # only one process
             if size == 1:
