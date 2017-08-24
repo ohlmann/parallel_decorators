@@ -37,6 +37,7 @@ from functools import wraps
 import traceback
 
 
+# some MPI helper functions
 def is_master():
     """return True if current rank is master"""
     try:
@@ -58,6 +59,25 @@ def is_mpi():
         return False
 
 
+def mpi_size():
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        return comm.Get_size()
+    except ImportError:
+        return 1
+
+
+def mpi_rank():
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        return comm.Get_rank()
+    except ImportError:
+        return 0
+
+
+# more helper functions
 def is_iterable(xs):
     """returns True if xs is an iterable"""
     # try to get iterator; if error occurs, xs is not iterable
@@ -76,6 +96,7 @@ def staticvariables(**variables):
     return decorate
 
 
+# vectorization functions down here
 def vectorize(f):
     """decorator for vectorization of functions
 
