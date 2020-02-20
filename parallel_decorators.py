@@ -431,8 +431,8 @@ def vectorize_mpi(use_progressbar=False, label=None, scheduling='auto'):
             # distribute data to all cores
             for i in range(len(xs)):
                 if rank == 0:
-                    # root sends to all processes
-                    for j in range(size):
+                    # root sends to all other processes
+                    for j in range(1, size):
                         comm.send(result[i], dest=j, tag=1)
                 else:
                     # each process receives from root
